@@ -13,6 +13,7 @@ jobs:
 
       - name: Rozpakuj projekt
         run: |
+          rm -rf buildsrc
           mkdir buildsrc
           unzip -q "MERA_RESET_ANDROID_PROJECT (1).zip" -d buildsrc
 
@@ -22,13 +23,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Zestaw SDK dla Androida
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
-      - name: Android SDK 35
+      - name: Zainstaluj Android 35
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Popraw ikonę aplikacji
+        run: |
+          sed -i 's|@drawable/ic_launcher|@mipmap/ic_launcher|g' buildsrc/MERA_RESET_ANDROID/app/src/main/AndroidManifest.xml
 
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -37,7 +43,7 @@ jobs:
 
       - name: Zbuduj APK
         working-directory: buildsrc/MERA_RESET_ANDROID
-        run: gradle assembleDebug
+        run: gradle --no-daemon assembleDebug
 
       - name: Nazwij APK
         run: |
