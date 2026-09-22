@@ -15,7 +15,13 @@ jobs:
         run: |
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q "MERA_RESET_ANDROID_PROJECT_ALL_MUSIC.zip" -d buildsrc
+          unzip -q "MERA_RESET_FINAL_APP_PROJECT.zip" -d buildsrc
+
+      - name: Dodaj finalne sety audio
+        run: |
+          cp "MERA_OCEAN_FLOW_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_ocean_flow.m4a
+          cp "MERA_VIBRO_FLOW_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_vibro_flow.m4a
+          cp "MERA_SACRED_RESET_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_sacred_reset.m4a
 
       - name: Java 17
         uses: actions/setup-java@v4
