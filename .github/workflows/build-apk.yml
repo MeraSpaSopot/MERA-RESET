@@ -6,22 +6,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Pobierz repo
         uses: actions/checkout@v4
-
-      - name: Rozpakuj projekt
-        run: |
-          rm -rf buildsrc
-          mkdir buildsrc
-          unzip -q "MERA_RESET_FINAL_APP_PROJECT.zip" -d buildsrc
-
-      - name: Dodaj finalne sety audio
-        run: |
-          cp "MERA_OCEAN_FLOW_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_ocean_flow.m4a
-          cp "MERA_VIBRO_FLOW_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_vibro_flow.m4a
-          cp "MERA_SACRED_RESET_30MIN_SMALL.m4a" buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_sacred_reset.m4a
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -29,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Zestaw SDK dla Androida
+      - name: Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
@@ -38,14 +27,659 @@ jobs:
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Popraw ikonę aplikacji
-        run: |
-          sed -i 's|@drawable/ic_launcher|@mipmap/ic_launcher|g' buildsrc/MERA_RESET_ANDROID/app/src/main/AndroidManifest.xml
-
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Narzędzia do muzyki
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade gdown
+
+      - name: Rozpakuj bazę aplikacji
+        run: |
+          rm -rf buildsrc
+          mkdir buildsrc
+          unzip -q "MERA_RESET_FINAL_APP_PROJECT.zip" -d buildsrc
+          mkdir -p buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw
+          rm -f buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/*
+
+      - name: Pobierz sesje z Google Drive
+        run: |
+          mkdir -p audio
+
+          gdown "https://drive.google.com/uc?id=14Cn-6SdiVIe6ipzzSYyyDyp-f2lCJWHM" -O audio/deep_flow.wav
+
+          gdown "https://drive.google.com/uc?id=1CQwT3HboG_XRpGh-O6bomPNb8R-h-9Fh" -O audio/calm.wav
+
+          gdown "https://drive.google.com/uc?id=1EgP835hg0WnojCT3Mi7LxpfkTA8Jfyfw" -O audio/gratitude.wav
+
+          gdown "https://drive.google.com/uc?id=1hRKL8SVpEguG73iJNTLsXDkIpivKYwsI" -O audio/transformation.wav
+
+          gdown "https://drive.google.com/uc?id=1rDRcl-Uy0dMA4kykf7pCcGeN9jwaLQkh" -O audio/balance.wav
+
+          ls -lh audio
+
+      - name: Zmniejsz muzykę
+        run: |
+          ffmpeg -y -i audio/deep_flow.wav \
+          -map_metadata -1 -vn -c:a aac -b:a 80k -ar 44100 -ac 2 \
+          buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_deep_flow.m4a
+
+          ffmpeg -y -i audio/calm.wav \
+          -map_metadata -1 -vn -c:a aac -b:a 80k -ar 44100 -ac 2 \
+          buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_calm.m4a
+
+          ffmpeg -y -i audio/gratitude.wav \
+          -map_metadata -1 -vn -c:a aac -b:a 80k -ar 44100 -ac 2 \
+          buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_gratitude.m4a
+
+          ffmpeg -y -i audio/transformation.wav \
+          -map_metadata -1 -vn -c:a aac -b:a 80k -ar 44100 -ac 2 \
+          buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_transformation.m4a
+
+          ffmpeg -y -i audio/balance.wav \
+          -map_metadata -1 -vn -c:a aac -b:a 80k -ar 44100 -ac 2 \
+          buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw/mera_balance.m4a
+
+          ls -lh buildsrc/MERA_RESET_ANDROID/app/src/main/res/raw
+
+      - name: Nowy ekran aplikacji
+        run: |
+          cat > buildsrc/MERA_RESET_ANDROID/app/src/main/java/pl/meraspa/reset/MainActivity.java <<'EOF'
+          package pl.meraspa.reset;
+
+          import android.app.Activity;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.media.AudioManager;
+          import android.media.MediaPlayer;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.ScrollView;
+          import android.widget.SeekBar;
+          import android.widget.TextView;
+
+          import java.util.Locale;
+
+          public class MainActivity extends Activity {
+
+              private MediaPlayer player;
+              private final Handler handler = new Handler();
+
+              private SeekBar progress;
+              private TextView time;
+              private Button playPause;
+
+              private boolean dragging = false;
+
+              private final int BG = Color.rgb(16,20,24);
+              private final int CARD = Color.rgb(28,34,39);
+              private final int WHITE = Color.rgb(247,245,240);
+              private final int GOLD = Color.rgb(213,190,156);
+              private final int GREY = Color.rgb(185,190,190);
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  getWindow().addFlags(
+                          WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+                  setVolumeControlStream(AudioManager.STREAM_MUSIC);
+
+                  home();
+              }
+
+              private int dp(int x) {
+                  return Math.round(
+                          x * getResources().getDisplayMetrics().density);
+              }
+
+              private TextView txt(
+                      String text,
+                      float size,
+                      int color,
+                      boolean bold) {
+
+                  TextView t = new TextView(this);
+
+                  t.setText(text);
+                  t.setTextSize(size);
+                  t.setTextColor(color);
+                  t.setGravity(Gravity.CENTER);
+                  t.setPadding(dp(10),dp(4),dp(10),dp(4));
+
+                  if (bold)
+                      t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+
+                  return t;
+              }
+
+              private GradientDrawable bg(int color) {
+
+                  GradientDrawable d = new GradientDrawable();
+
+                  d.setColor(color);
+                  d.setCornerRadius(dp(22));
+                  d.setStroke(dp(1),Color.rgb(58,64,68));
+
+                  return d;
+              }
+
+              private void home() {
+
+                  stop();
+
+                  ScrollView scroll = new ScrollView(this);
+
+                  scroll.setFillViewport(true);
+                  scroll.setBackgroundColor(BG);
+
+                  LinearLayout root = new LinearLayout(this);
+
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setGravity(Gravity.CENTER_HORIZONTAL);
+                  root.setPadding(dp(20),dp(30),dp(20),dp(30));
+
+                  scroll.addView(root);
+
+                  root.addView(txt(
+                          "MERA SPA",
+                          16,
+                          GOLD,
+                          true));
+
+                  root.addView(txt(
+                          "MIND & BODY RESET",
+                          27,
+                          WHITE,
+                          true));
+
+                  TextView choose = txt(
+                          "Choose your experience\nWybierz doświadczenie",
+                          14,
+                          GREY,
+                          false);
+
+                  choose.setPadding(
+                          dp(10),
+                          dp(6),
+                          dp(10),
+                          dp(24));
+
+                  root.addView(choose);
+
+                  card(
+                          root,
+                          "MERA DEEP FLOW",
+                          "GŁĘBOKI RELAKS",
+                          "Music / Muzyka",
+                          R.raw.mera_deep_flow);
+
+                  card(
+                          root,
+                          "MERA CALM",
+                          "WYCISZENIE",
+                          "Music / Muzyka",
+                          R.raw.mera_calm);
+
+                  card(
+                          root,
+                          "MERA GRATITUDE",
+                          "WDZIĘCZNOŚĆ",
+                          "Guided Meditation / Medytacja prowadzona",
+                          R.raw.mera_gratitude);
+
+                  card(
+                          root,
+                          "MERA TRANSFORMATION",
+                          "TRANSFORMACJA",
+                          "Guided Meditation / Medytacja prowadzona",
+                          R.raw.mera_transformation);
+
+                  card(
+                          root,
+                          "MERA BALANCE",
+                          "RÓWNOWAGA",
+                          "Music / Muzyka",
+                          R.raw.mera_balance);
+
+                  setContentView(scroll);
+              }
+
+              private void card(
+                      LinearLayout root,
+                      String en,
+                      String pl,
+                      String kind,
+                      int audio) {
+
+                  LinearLayout box = new LinearLayout(this);
+
+                  box.setOrientation(LinearLayout.VERTICAL);
+                  box.setGravity(Gravity.CENTER);
+                  box.setPadding(
+                          dp(15),
+                          dp(18),
+                          dp(15),
+                          dp(18));
+
+                  box.setBackground(bg(CARD));
+
+                  LinearLayout.LayoutParams lp =
+                          new LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT,
+                                  LinearLayout.LayoutParams.WRAP_CONTENT);
+
+                  lp.setMargins(0,0,0,dp(12));
+
+                  box.setLayoutParams(lp);
+
+                  box.addView(txt(en,20,WHITE,true));
+                  box.addView(txt(pl,14,GOLD,true));
+
+                  TextView type =
+                          txt(kind,13,GREY,false);
+
+                  type.setPadding(
+                          dp(5),
+                          dp(8),
+                          dp(5),
+                          dp(3));
+
+                  box.addView(type);
+
+                  box.setOnClickListener(
+                          v -> playerScreen(
+                                  en,
+                                  pl,
+                                  kind,
+                                  audio));
+
+                  root.addView(box);
+              }
+
+              private void playerScreen(
+                      String en,
+                      String pl,
+                      String kind,
+                      int audio) {
+
+                  stop();
+
+                  player = MediaPlayer.create(
+                          this,
+                          audio);
+
+                  if (player == null) {
+                      home();
+                      return;
+                  }
+
+                  LinearLayout root =
+                          new LinearLayout(this);
+
+                  root.setOrientation(
+                          LinearLayout.VERTICAL);
+
+                  root.setGravity(
+                          Gravity.CENTER_HORIZONTAL);
+
+                  root.setPadding(
+                          dp(22),
+                          dp(34),
+                          dp(22),
+                          dp(28));
+
+                  root.setBackgroundColor(BG);
+
+                  TextView back =
+                          txt("‹ Back / Wróć",
+                                  15,
+                                  GOLD,
+                                  true);
+
+                  back.setGravity(Gravity.START);
+
+                  back.setOnClickListener(
+                          v -> home());
+
+                  root.addView(back);
+
+                  root.addView(
+                          txt(en,26,WHITE,true));
+
+                  root.addView(
+                          txt(pl,17,GOLD,true));
+
+                  TextView kindText =
+                          txt(kind,14,GREY,false);
+
+                  kindText.setPadding(
+                          dp(5),
+                          dp(8),
+                          dp(5),
+                          dp(28));
+
+                  root.addView(kindText);
+
+                  time = txt(
+                          "00:00 / " +
+                          format(player.getDuration()),
+                          17,
+                          WHITE,
+                          false);
+
+                  root.addView(time);
+
+                  progress =
+                          new SeekBar(this);
+
+                  progress.setMax(
+                          Math.max(
+                                  player.getDuration(),
+                                  1));
+
+                  root.addView(
+                          progress,
+                          new LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT,
+                                  dp(60)));
+
+                  root.addView(
+                          txt(
+                                  "Swipe to seek / Przesuń, aby przewinąć",
+                                  12,
+                                  GREY,
+                                  false));
+
+                  playPause =
+                          new Button(this);
+
+                  playPause.setText(
+                          "PLAY / ODTWÓRZ");
+
+                  playPause.setAllCaps(false);
+                  playPause.setTextSize(16);
+                  playPause.setTextColor(BG);
+                  playPause.setTypeface(
+                          Typeface.DEFAULT,
+                          Typeface.BOLD);
+
+                  GradientDrawable playBg =
+                          new GradientDrawable();
+
+                  playBg.setColor(GOLD);
+                  playBg.setCornerRadius(dp(20));
+
+                  playPause.setBackground(playBg);
+
+                  LinearLayout.LayoutParams playLp =
+                          new LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT,
+                                  dp(58));
+
+                  playLp.setMargins(
+                          0,
+                          dp(25),
+                          0,
+                          dp(18));
+
+                  root.addView(
+                          playPause,
+                          playLp);
+
+                  playPause.setOnClickListener(
+                          v -> {
+
+                              if (player == null)
+                                  return;
+
+                              if (player.isPlaying()) {
+
+                                  player.pause();
+
+                                  playPause.setText(
+                                          "PLAY / ODTWÓRZ");
+
+                              } else {
+
+                                  player.start();
+
+                                  playPause.setText(
+                                          "PAUSE / PAUZA");
+
+                                  handler.post(update);
+                              }
+                          });
+
+                  root.addView(
+                          txt(
+                                  "Volume / Głośność",
+                                  13,
+                                  GREY,
+                                  false));
+
+                  SeekBar volume =
+                          new SeekBar(this);
+
+                  volume.setMax(100);
+                  volume.setProgress(80);
+
+                  player.setVolume(
+                          0.8f,
+                          0.8f);
+
+                  root.addView(volume);
+
+                  volume.setOnSeekBarChangeListener(
+                          new SeekBar.OnSeekBarChangeListener() {
+
+                              @Override
+                              public void onProgressChanged(
+                                      SeekBar seekBar,
+                                      int value,
+                                      boolean fromUser) {
+
+                                  if (player != null) {
+
+                                      float vol =
+                                              value / 100f;
+
+                                      player.setVolume(
+                                              vol,
+                                              vol);
+                                  }
+                              }
+
+                              @Override
+                              public void onStartTrackingTouch(
+                                      SeekBar seekBar) {}
+
+                              @Override
+                              public void onStopTrackingTouch(
+                                      SeekBar seekBar) {}
+                          });
+
+                  Button end =
+                          new Button(this);
+
+                  end.setText(
+                          "END SESSION / ZAKOŃCZ SESJĘ");
+
+                  end.setAllCaps(false);
+                  end.setTextColor(WHITE);
+
+                  end.setBackground(bg(CARD));
+
+                  LinearLayout.LayoutParams endLp =
+                          new LinearLayout.LayoutParams(
+                                  LinearLayout.LayoutParams.MATCH_PARENT,
+                                  dp(54));
+
+                  endLp.setMargins(
+                          0,
+                          dp(24),
+                          0,
+                          0);
+
+                  root.addView(
+                          end,
+                          endLp);
+
+                  end.setOnClickListener(
+                          v -> home());
+
+                  progress.setOnSeekBarChangeListener(
+                          new SeekBar.OnSeekBarChangeListener() {
+
+                              @Override
+                              public void onProgressChanged(
+                                      SeekBar seekBar,
+                                      int value,
+                                      boolean fromUser) {
+
+                                  if (fromUser &&
+                                      player != null) {
+
+                                      time.setText(
+                                              format(value) +
+                                              " / " +
+                                              format(
+                                                      player.getDuration()));
+                                  }
+                              }
+
+                              @Override
+                              public void onStartTrackingTouch(
+                                      SeekBar seekBar) {
+
+                                  dragging = true;
+                              }
+
+                              @Override
+                              public void onStopTrackingTouch(
+                                      SeekBar seekBar) {
+
+                                  if (player != null)
+                                      player.seekTo(
+                                              seekBar.getProgress());
+
+                                  dragging = false;
+                              }
+                          });
+
+                  player.setOnCompletionListener(
+                          mp -> {
+
+                              playPause.setText(
+                                      "PLAY / ODTWÓRZ");
+
+                              progress.setProgress(
+                                      progress.getMax());
+                          });
+
+                  setContentView(root);
+
+                  handler.post(update);
+              }
+
+              private final Runnable update =
+                      new Runnable() {
+
+                  @Override
+                  public void run() {
+
+                      if (player == null)
+                          return;
+
+                      try {
+
+                          int pos =
+                                  player.getCurrentPosition();
+
+                          int dur =
+                                  player.getDuration();
+
+                          if (!dragging) {
+
+                              progress.setProgress(pos);
+
+                              time.setText(
+                                      format(pos) +
+                                      " / " +
+                                      format(dur));
+                          }
+
+                          handler.postDelayed(
+                                  this,
+                                  500);
+
+                      } catch (Exception ignored) {}
+                  }
+              };
+
+              private String format(int ms) {
+
+                  int seconds =
+                          Math.max(0,ms / 1000);
+
+                  return String.format(
+                          Locale.US,
+                          "%02d:%02d",
+                          seconds / 60,
+                          seconds % 60);
+              }
+
+              private void stop() {
+
+                  handler.removeCallbacks(update);
+
+                  if (player != null) {
+
+                      try {
+                          player.stop();
+                      } catch (Exception ignored) {}
+
+                      player.release();
+                      player = null;
+                  }
+              }
+
+              @Override
+              protected void onDestroy() {
+
+                  stop();
+                  super.onDestroy();
+              }
+
+              @Override
+              public void onBackPressed() {
+
+                  home();
+              }
+          }
+          EOF
+
+      - name: Upewnij się że M4A nie są kompresowane ponownie
+        run: |
+          cat >> buildsrc/MERA_RESET_ANDROID/app/build.gradle <<'EOF'
+
+          android {
+              androidResources {
+                  noCompress += ['m4a']
+              }
+          }
+          EOF
 
       - name: Zbuduj APK
         working-directory: buildsrc/MERA_RESET_ANDROID
@@ -54,9 +688,11 @@ jobs:
       - name: Nazwij APK
         run: |
           cp buildsrc/MERA_RESET_ANDROID/app/build/outputs/apk/debug/app-debug.apk MERA_RESET.apk
+          ls -lh MERA_RESET.apk
 
       - name: Zapisz APK
         uses: actions/upload-artifact@v4
         with:
           name: MERA_RESET_APK
           path: MERA_RESET.apk
+          retention-days: 30
